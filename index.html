@@ -96,6 +96,7 @@
                 opacity: 0
             }
         }
+
         :root {
             --bg: #0b0f14;
             --panel: #121821;
@@ -656,19 +657,62 @@
 
         /* ---------- Image quality ---------- */
         function nearlyEqualRatio(a, b, tol = .12) { return Math.abs(a - b) / Math.max(a, b) <= tol; }
+
+        // Replace the whole function with this:
         async function analyzeImageQuality(img, wantW, wantH) {
-            const w = img.naturalWidth || img.width || 0, h = img.naturalHeight || img.height || 0;
-            if (!Number.isFinite(w) || !Number.isFinite(h) || w < 64 || h < 64) return false;
-            const wantR = wantW && wantH ? wantW / wantH : null;
-            if (wantR) { const gotR = w / h; if (!nearlyEqualRatio(gotR, wantR, .2)) return false; }
-            const s = 64, c = document.createElement('canvas'); c.width = s; c.height = s; const ctx = c.getContext('2d');
-            ctx.drawImage(img, 0, 0, s, s); const data = ctx.getImageData(0, 0, s, s).data;
-            let mean = 0, n = s * s; for (let i = 0; i < n; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; mean += 0.2126 * r + 0.7152 * g + 0.0722 * b; }
-            mean /= n; let variance = 0;
-            for (let i = 0; i < n; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; const y = 0.2126 * r + 0.7152 * g + 0.0722 * b; const d = y - mean; variance += d * d; }
-            const stdev = Math.sqrt(variance / n);
-            return stdev >= 6;
+            try {
+                const w = img.naturalWidth || img.width || 0, h = img.naturalHeight || img.height || 0;
+
+                // 1) If the image is reasonably sized, don't be too picky
+                if (w >= 256 && h >= 256) {
+                    // allow a much wider ratio drift (35%)
+                    const wantR = wantW && wantH ? wantW / wantH : null;
+                    if (wantR) {
+                        const gotR = w / h;
+                        const tol = 0.35;              // was 0.20
+                        const off = Math.abs(gotR - wantR) / Math.max(gotR, wantR);
+                        if (off > tol) return false;   // still reject wildly wrong AR
+                    }
+                    // big enough and AR ok → accept without texture probe
+                    return true;
+                }
+
+                // 2) For small images, do a gentle texture probe (looser threshold)
+                const s = 64, c = document.createElement("canvas"); c.width = s; c.height = s;
+                const ctx = c.getContext("2d", { willReadFrequently: true });
+                ctx.drawImage(img, 0, 0, s, s);
+
+                // If canvas became tainted or unreadable, fail open (accept)
+                let data;
+                try {
+                    data = ctx.getImageData(0, 0, s, s).data;
+                } catch {
+                    return true; // don’t block on security/taint
+                }
+
+                let mean = 0, n = s * s;
+                for (let i = 0; i < n; i++) {
+                    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+                    mean += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                }
+                mean /= n;
+                let variance = 0;
+                for (let i = 0; i < n; i++) {
+                    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+                    const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    const d = y - mean;
+                    variance += d * d;
+                }
+                const stdev = Math.sqrt(variance / n);
+
+                // was 6 → 3 (more forgiving)
+                return stdev >= 3;
+            } catch {
+                // On any unexpected error, fail open
+                return true;
+            }
         }
+
 
         /* ---------- Dedupe (aHash) ---------- */
         const _seenHashes = new Set();
@@ -1284,7 +1328,7 @@ void main(){ gl_FragColor = texture2D(t, uv); }`;
             setBusy(true, 'Error');
         });
     </script>
- 
+
     <!-- Main app logic (automatically imports supabase.js) -->
     <script type="module" src="script.js"></script>
 </body>
