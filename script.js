@@ -5,18 +5,13 @@ import { chooseModelSmart, recordVoteGlobal } from "./supabase.js";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchWithTimeout(url, init = {}, ms = 15000) {
   const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), ms);
+  const id = setTimeout(() => ctrl.abort(new Error("timeout")), ms);
   try {
     return await fetch(url, { ...init, signal: init.signal ?? ctrl.signal, cache: "no-store" });
-  } catch (e) {
-    // Normalize abort into a readable message
-    if (e?.name === "AbortError") throw new Error("timeout");
-    throw e;
   } finally {
     clearTimeout(id);
   }
 }
-
 const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 const idle = (timeout = 0) =>
   new Promise((r) =>
