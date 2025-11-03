@@ -1,0 +1,1292 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <link rel="stylesheet" href="style.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pollinations — Text → Image (Unlimited • No Key)</title>
+
+    <!-- ZIP helpers -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js" defer></script>
+
+    <style>
+        /* Feedback micro-interactions */
+        .thumb {
+            position: relative;
+            overflow: hidden
+        }
+
+        .thumb:focus-visible {
+            outline: 3px solid rgba(34, 211, 238, .45);
+            outline-offset: 2px
+        }
+
+        .thumb .ripple {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: inherit;
+            background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255, 255, 255, .28), transparent 40%);
+            animation: ripple .6s ease-out forwards
+        }
+
+        @keyframes ripple {
+            from {
+                opacity: .7
+            }
+
+            to {
+                opacity: 0
+            }
+        }
+
+        .vote-toast {
+            position: absolute;
+            top: -14px;
+            right: -6px;
+            font-size: 11px;
+            background: rgba(15, 23, 42, .9);
+            color: #c7f9cc;
+            border: 1px solid rgba(34, 197, 94, .5);
+            padding: 3px 6px;
+            border-radius: 999px;
+            transform: translateY(6px) scale(.9);
+            opacity: 0;
+            pointer-events: none;
+            animation: toast-in .5s ease forwards;
+            white-space: nowrap
+        }
+
+        .vote-toast.red {
+            color: #fecaca;
+            border-color: rgba(239, 68, 68, .6)
+        }
+
+        @keyframes toast-in {
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1)
+            }
+        }
+
+        .burst {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
+            pointer-events: none;
+            animation: burst-up .7s ease-out forwards;
+            font-size: 14px
+        }
+
+        @keyframes burst-up {
+            0% {
+                transform: translate(-50%, 8px) scale(.9);
+                opacity: 0
+            }
+
+            30% {
+                opacity: 1
+            }
+
+            100% {
+                transform: translate(-50%, -18px) scale(1.1);
+                opacity: 0
+            }
+        }
+        :root {
+            --bg: #0b0f14;
+            --panel: #121821;
+            --muted: #9db1c7;
+            --text: #e6eef6;
+            --accent: #3b82f6;
+            --accent-2: #22d3ee;
+            --radius: 14px
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            background:
+                radial-gradient(1200px 600px at 10% -10%, rgba(34, 211, 238, .08), transparent 60%),
+                radial-gradient(900px 500px at 100% 0, rgba(59, 130, 246, .08), transparent 60%),
+                var(--bg);
+            color: var(--text);
+            image-orientation: from-image;
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 48px auto;
+            padding: 0 20px
+        }
+
+        .card {
+            background: linear-gradient(180deg, rgba(255, 255, 255, .02), rgba(255, 255, 255, .01));
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: var(--radius);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+            backdrop-filter: blur(6px)
+        }
+
+        header.card {
+            padding: 20px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px
+        }
+
+        header h1 {
+            font-size: clamp(18px, 1.6vw + 14px, 28px);
+            margin: 0;
+            letter-spacing: .2px
+        }
+
+        .controls {
+            margin-top: 18px;
+            padding: 18px;
+            display: grid;
+            grid-template-columns: 1.2fr .8fr;
+            gap: 16px
+        }
+
+        @media (max-width:900px) {
+            .controls {
+                grid-template-columns: 1fr
+            }
+        }
+
+        .stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px
+        }
+
+        @media (max-width:900px) {
+            .grid {
+                grid-template-columns: 1fr 1fr
+            }
+        }
+
+        label span {
+            font-size: 13px;
+            color: var(--muted)
+        }
+
+        textarea,
+        select,
+        input {
+            width: 100%;
+            background: var(--panel);
+            color: var(--text);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, .08);
+            padding: 12px 14px;
+            outline: none;
+            font-size: 15px;
+            transition: border-color .2s, box-shadow .2s, background .2s
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical
+        }
+
+        select:focus,
+        textarea:focus,
+        input:focus {
+            border-color: rgba(34, 211, 238, .45);
+            box-shadow: 0 0 0 4px rgba(34, 211, 238, .12)
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 18px 18px
+        }
+
+        button {
+            appearance: none;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform .04s ease, box-shadow .2s, background .2s, border-color .2s
+        }
+
+        button:active {
+            transform: translateY(1px)
+        }
+
+        .btn-primary {
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            color: #06121d;
+            box-shadow: 0 8px 20px rgba(34, 211, 238, .25)
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border-color: rgba(255, 255, 255, .12);
+            color: var(--text)
+        }
+
+        .btn-danger {
+            background: transparent;
+            border-color: rgba(239, 68, 68, .6);
+            color: #fecaca
+        }
+
+        .gallery {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px
+        }
+
+        .imgcard {
+            background: #0e151d;
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column
+        }
+
+        .imgwrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0f15
+        }
+
+        .imgwrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block
+        }
+
+        .imgtools {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255, 255, 255, .06)
+        }
+
+        .small {
+            font-size: 12px;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 14px;
+            padding: 0 18px 18px
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        .pill {
+            font-size: 12px;
+            padding: 6px 10px;
+            border: 1px solid rgba(255, 255, 255, .1);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .02)
+        }
+
+        .row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px
+        }
+
+        .row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px
+        }
+
+        @media (max-width:900px) {
+
+            .row-2,
+            .row-3 {
+                grid-template-columns: 1fr
+            }
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 10px 28px rgba(34, 211, 238, .32)
+        }
+
+        .imgcard:hover {
+            transform: translateY(-1px);
+            transition: transform .15s ease, box-shadow .2s
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header class="card">
+            <div>
+                <h1>Unlimited Image Generator — Text → Image <sub>by Tisan</sub></h1>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <label class="pill" style="display:flex;align-items:center;gap:8px">
+                    <input id="gpuEnable" type="checkbox" checked /> Use GPU
+                </label>
+                <span id="gpuInfo" class="pill" aria-live="polite">GPU: checking…</span>
+            </div>
+        </header>
+
+        <section class="card controls">
+            <div class="stack">
+                <label><span>Prompt(s)</span>
+                    <textarea id="prompt"
+                        placeholder="Enter one or many prompts. Enable 'Split prompts' to use newline, comma, etc."></textarea>
+                </label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <button id="surprise" class="btn-ghost">Surprise me</button>
+                    <button id="pastePrompt" class="btn-ghost">Paste Prompt</button>
+                    <span id="chars" class="pill">0 prompts</span>
+                </div>
+            </div>
+
+            <div class="stack">
+                <div class="grid">
+                    <label><span>Batch (images per prompt)</span>
+                        <select id="count">
+                            <option>1</option>
+                            <option>2</option>
+                            <option selected>3</option>
+                            <option>4</option>
+                            <option>5</option>
+                            <option>6</option>
+                        </select>
+                    </label>
+                    <label><span>Aspect preview</span>
+                        <select id="aspect">
+                            <option value="1/1" selected>Square 1:1</option>
+                            <option value="3/4">Portrait 3:4</option>
+                            <option value="4/3">Landscape 4:3</option>
+                            <option value="16/9">Widescreen 16:9</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="row-3">
+                    <label><span>Width (px)</span><input id="width" type="number" min="64" max="16384" step="64"
+                            value="2048" /></label>
+                    <label><span>Computed height (px)</span><input id="heightComputed" type="number" readonly /></label>
+                    <label style="display:flex;align-items:center;gap:8px">
+                        <input id="lockAspect" type="checkbox" checked /><span class="pill">Lock height to aspect</span>
+                    </label>
+                </div>
+
+                <div class="row-2">
+                    <label style="display:flex;align-items:center;gap:8px"><input id="multi" type="checkbox" /><span
+                            class="pill">Split prompts</span></label>
+                    <label><span>Delimiter</span>
+                        <select id="delimiter">
+                            <option value="newline" selected>Newline (\n)</option>
+                            <option value="blankline">Blank line</option>
+                            <option value="comma">Comma (,)</option>
+                            <option value="semicolon">Semicolon (;)</option>
+                            <option value="pipe">Pipe (|)</option>
+                            <option value="space">Space</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="row-2">
+                    <label style="display:flex;align-items:center;gap:8px"><input id="skipAbnormal" type="checkbox"
+                            checked /><span class="pill">Skip abnormal/distorted images</span></label>
+                    <div class="pill" id="skipCounter" style="display:flex;align-items:center;justify-content:center">
+                        Skipped: 0</div>
+                </div>
+
+                <div class="row-2">
+                    <label style="display:flex;align-items:center;gap:8px"><input id="adaptive" type="checkbox"
+                            checked /><span class="pill">Adaptive mode (learn from feedback)</span></label>
+                    <label><span>Smart retries (0–5)</span><input id="smartRetries" type="number" min="0" max="5"
+                            value="2" /></label>
+                </div>
+                <div class="row-2">
+                    <label style="display:flex;align-items:center;gap:8px"><input id="avoidDup" type="checkbox"
+                            checked /><span class="pill">Avoid duplicate/similar images</span></label>
+                    <label><span>Unique retries (0–6)</span><input id="uniqueRetries" type="number" min="0" max="6"
+                            value="3" /></label>
+                </div>
+
+                <div class="row-2">
+                    <label><span>Seed (optional)</span><input id="seed" type="number"
+                            placeholder="Random if empty" /></label>
+                    <label style="display:flex;align-items:center;gap:8px"><input id="nologo" type="checkbox"
+                            checked /><span class="pill">nologo=true</span></label>
+                </div>
+
+                <div class="row-2">
+                    <label><span>Download format</span>
+                        <select id="format">
+                            <option value="png" selected>PNG (lossless)</option>
+                            <option value="jpeg">JPG (max quality)</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="actions" style="padding:0">
+                    <button id="generate" class="btn-primary">Generate</button>
+                    <button id="stop" class="btn-danger" disabled>Stop</button>
+                    <button id="downloadAll" class="btn-ghost">Download all (zip)</button>
+                    <button id="clear" class="btn-ghost">Clear gallery</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="status hidden" id="status">
+            <div class="pill" id="statusText">Idle</div>
+            <div class="pill" id="progress">0/0</div>
+        </section>
+
+        <section class="gallery" id="gallery" aria-live="polite"></section>
+        <div id="sr-live" aria-live="polite" class="hidden"></div>
+    </div>
+
+    <script>
+        /* ---------- tiny helpers ---------- */
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        async function fetchWithTimeout(url, init = {}, ms = 15000) {
+            const ctrl = new AbortController();
+            const id = setTimeout(() => ctrl.abort(new Error('timeout')), ms);
+            try { return await fetch(url, { ...init, signal: init.signal ?? ctrl.signal }); }
+            finally { clearTimeout(id); }
+        }
+        const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+        const idle = (timeout = 0) => new Promise(r => (window.requestIdleCallback ? requestIdleCallback(r, { timeout }) : setTimeout(r, Math.max(0, timeout))));
+
+        /* ---------- DOM refs ---------- */
+        const els = {
+            prompt: document.getElementById('prompt'),
+            count: document.getElementById('count'),
+            aspect: document.getElementById('aspect'),
+            gen: document.getElementById('generate'),
+            stop: document.getElementById('stop'),
+            clear: document.getElementById('clear'),
+            status: document.getElementById('status'),
+            statusText: document.getElementById('statusText'),
+            progress: document.getElementById('progress'),
+            gallery: document.getElementById('gallery'),
+            chars: document.getElementById('chars'),
+            surprise: document.getElementById('surprise'),
+            pastePrompt: document.getElementById('pastePrompt'),
+            downloadAll: document.getElementById('downloadAll'),
+            format: document.getElementById('format'),
+            multi: document.getElementById('multi'),
+            delimiter: document.getElementById('delimiter'),
+            seed: document.getElementById('seed'),
+            nologo: document.getElementById('nologo'),
+            width: document.getElementById('width'),
+            heightComputed: document.getElementById('heightComputed'),
+            lockAspect: document.getElementById('lockAspect'),
+            skipAbnormal: document.getElementById('skipAbnormal'),
+            skipCounter: document.getElementById('skipCounter'),
+            adaptive: document.getElementById('adaptive'),
+            smartRetries: document.getElementById('smartRetries'),
+            avoidDup: document.getElementById('avoidDup'),
+            uniqueRetries: document.getElementById('uniqueRetries'),
+            srLive: document.getElementById('sr-live'),
+            gpuInfo: document.getElementById('gpuInfo'),
+            gpuEnable: document.getElementById('gpuEnable'),
+        };
+
+        const samples = [
+            'A futuristic cityscape at night, neon rain, reflective streets, cinematic ultrawide, volumetric fog, highly detailed',
+            'A cozy reading nook with warm lamp light, rain on the window, soft bokeh, film grain, shallow depth of field',
+            'A photorealistic robot barista serving coffee, stainless steel textures, natural morning light, 50mm lens',
+            'An ancient library hidden in a forest, golden hour, god rays through trees, ethereal atmosphere, high detail',
+            'An isometric pixel art cyberpunk alley, vending machines, animated neon signs, rainy vibes'
+        ];
+
+        let running = false, cancel = false, currentAbort = null;
+
+        /* ---------- Model chooser ---------- */
+        function chooseModel(prompt) {
+            const p = (prompt || '').toLowerCase();
+            const hits = a => a.some(k => p.includes(k));
+            if (hits(['photo', 'photoreal', 'realistic', 'dslr', 'cinematic', 'bokeh', 'portrait', 'macro', 'lens', 'hdr', 'street photography', 'film'])) return 'flux';
+            if (hits(['anime', 'manga', 'illustration', 'vector', 'flat', 'logo', 'icon', 'pixel art', 'isometric', 'low poly', 'cartoon', 'comic', 'chibi'])) return 'sdv1';
+            if (hits(['abstract', 'surreal', 'dreamlike', 'glitch', 'fractal', 'neural', 'vaporwave'])) return 'sdv2';
+            if (hits(['architecture', 'interior', 'exterior', 'product render', 'studio light', 'packshot'])) return 'flux';
+            if (hits(['oil painting', 'watercolor', 'gouache', 'digital painting', 'concept art', 'fantasy art'])) return 'sdv1';
+            return 'flux';
+        }
+
+        /* ---------- Adaptive memory ---------- */
+        function tokenizePrompt(p) { return (p || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(x => x && x.length > 2); }
+        function hashPrompt(p) { let h = 0, s = (p || ''); for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0 } return String(h); }
+        function loadPrefs() { try { return JSON.parse(localStorage.getItem('aiGen_prefs') || '{}') } catch { return {} } }
+        function savePrefs(o) { try { localStorage.setItem('aiGen_prefs', JSON.stringify(o)) } catch { } }
+        function recordVote(prompt, model, seed, up) {
+            const store = loadPrefs(); store.winners = store.winners || []; store.tokens = store.tokens || {};
+            const ph = hashPrompt(prompt), scoreDelta = up ? 1 : -1;
+            store.winners.push({ ph, model, seed, score: scoreDelta, ts: Date.now() });
+            if (store.winners.length > 200) store.winners = store.winners.slice(-200);
+            for (const t of tokenizePrompt(prompt)) store.tokens[t] = (store.tokens[t] || 0) + scoreDelta;
+            savePrefs(store);
+        }
+        function pickSeed(prompt, fallback) {
+            const store = loadPrefs(), ph = hashPrompt(prompt);
+            const cand = (store.winners || []).filter(w => w.ph === ph && Number.isFinite(w.seed)).sort((a, b) => b.ts - a.ts)[0];
+            return cand ? cand.seed : fallback;
+        }
+
+        /* ---------- UI helpers ---------- */
+        function setBusy(active, text = 'Generating…') { els.status.classList.toggle('hidden', !active); els.statusText.textContent = text; }
+        function setProgress(i, n) { els.progress.textContent = `${i}/${n}`; }
+        function makeRipple(event, target) {
+            const rect = target.getBoundingClientRect();
+            const span = document.createElement('span');
+            span.className = 'ripple';
+            const x = ((event.clientX - rect.left) / rect.width) * 100;
+            const y = ((event.clientY - rect.top) / rect.height) * 100;
+            span.style.setProperty('--x', x + '%');
+            span.style.setProperty('--y', y + '%');
+            target.appendChild(span);
+            setTimeout(() => span.remove(), 650);
+        }
+        function makeToast(target, text, isDown = false) {
+            const t = document.createElement('span');
+            t.className = 'vote-toast' + (isDown ? ' red' : '');
+            t.textContent = text;
+            target.appendChild(t);
+            setTimeout(() => t.remove(), 1000);
+        }
+        function makeBurst(target, emoji = '✨') {
+            const b = document.createElement('span');
+            b.className = 'burst';
+            b.textContent = emoji;
+            target.appendChild(b);
+            setTimeout(() => b.remove(), 700);
+        }
+
+        function parsePrompts(raw) {
+            const s = (raw || '').trim(); if (!s) return [];
+            if (!els.multi.checked) return [s];
+            const d = els.delimiter.value; let parts = [];
+            switch (d) {
+                case 'newline': parts = s.split(/\n+/); break;
+                case 'blankline': parts = s.split(/\n\s*\n+/); break;
+                case 'comma': parts = s.split(/\s*,\s*/); break;
+                case 'semicolon': parts = s.split(/\s*;\s*/); break;
+                case 'pipe': parts = s.split(/\s*\|\s*/); break;
+                case 'space': parts = s.split(/\s+/); break;
+                default: parts = [s];
+            }
+            return parts.map(x => x.trim()).filter(Boolean);
+        }
+        function updatePromptCount() {
+            const n = parsePrompts(els.prompt.value).length;
+            els.chars.textContent = `${n} prompt${n === 1 ? '' : 's'}`;
+        }
+        els.prompt.addEventListener('input', updatePromptCount);
+        els.multi.addEventListener('change', updatePromptCount);
+        els.delimiter.addEventListener('change', updatePromptCount);
+
+        function filenameFromPrompt(prompt, i, ext) {
+            const base = (prompt || '').trim().slice(0, 60).replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '').toLowerCase() || 'image';
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            return `${base}-${i}-${ts}.${ext}`;
+        }
+
+        function buildPollinationsUrl(prompt, { model, width, height, seed, nologo, quality = 'default' }) {
+            const base = 'https://image.pollinations.ai/prompt/';
+            const q = new URLSearchParams();
+            const W = Math.min(Math.max(64, Number(width || 0)), 3072);
+            const H = Math.min(Math.max(64, Number(height || 0)), 3072);
+            if (model && model !== 'any') q.set('model', model);
+            if (W) q.set('width', String(W));
+            if (H) q.set('height', String(H));
+            if (nologo) q.set('nologo', 'true');
+            if (seed !== undefined && seed !== null && seed !== '') q.set('seed', String(seed));
+            if (quality) q.set('q', quality);
+            return base + encodeURIComponent(prompt) + (q.toString() ? ('?' + q.toString()) : '');
+        }
+
+        /* ---------- Aspect / size ---------- */
+        function parseAspect(val) { const [aw, ah] = (val || '1/1').split('/').map(Number); return { aw: Math.max(1, aw | 0), ah: Math.max(1, ah | 0) }; }
+        function updateDerivedHeight() {
+            const { aw, ah } = parseAspect(els.aspect.value);
+            const raw = (els.width.value || '').trim(); if (raw === '') { els.heightComputed.value = ''; return; }
+            const width = parseInt(raw, 10); if (!Number.isFinite(width) || width <= 0) { return; }
+            const height = Math.max(1, Math.round(width * (ah / aw)));
+            els.heightComputed.value = String(height);
+        }
+        els.width.addEventListener('input', updateDerivedHeight);
+        els.aspect.addEventListener('change', updateDerivedHeight);
+
+        /* ---------- Image quality ---------- */
+        function nearlyEqualRatio(a, b, tol = .12) { return Math.abs(a - b) / Math.max(a, b) <= tol; }
+        async function analyzeImageQuality(img, wantW, wantH) {
+            const w = img.naturalWidth || img.width || 0, h = img.naturalHeight || img.height || 0;
+            if (!Number.isFinite(w) || !Number.isFinite(h) || w < 64 || h < 64) return false;
+            const wantR = wantW && wantH ? wantW / wantH : null;
+            if (wantR) { const gotR = w / h; if (!nearlyEqualRatio(gotR, wantR, .2)) return false; }
+            const s = 64, c = document.createElement('canvas'); c.width = s; c.height = s; const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0, s, s); const data = ctx.getImageData(0, 0, s, s).data;
+            let mean = 0, n = s * s; for (let i = 0; i < n; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; mean += 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+            mean /= n; let variance = 0;
+            for (let i = 0; i < n; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; const y = 0.2126 * r + 0.7152 * g + 0.0722 * b; const d = y - mean; variance += d * d; }
+            const stdev = Math.sqrt(variance / n);
+            return stdev >= 6;
+        }
+
+        /* ---------- Dedupe (aHash) ---------- */
+        const _seenHashes = new Set();
+        function _aHash(img, size = 8) {
+            const s = size | 0, c = document.createElement('canvas'); c.width = s; c.height = s; const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0, s, s); const data = ctx.getImageData(0, 0, s, s).data, gs = new Array(s * s);
+            for (let i = 0; i < s * s; i++) { const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2]; gs[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b); }
+            const mean = gs.reduce((a, b) => a + b, 0) / (s * s); let bits = ''; for (let i = 0; i < gs.length; i++) bits += (gs[i] >= mean ? '1' : '0');
+            let hex = ''; for (let i = 0; i < bits.length; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+            return hex;
+        }
+        function _hamming(a, b) { if (!a || !b || a.length !== b.length) return 64; let d = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++; return d; }
+
+        /* ---------- GPU upscale ---------- */
+        function getGpuReadableName(gl) {
+            try {
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                if (!ext) return gl.getParameter(gl.RENDERER) || 'unknown';
+                return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || gl.getParameter(gl.RENDERER) || 'unknown';
+            } catch {
+                return 'unknown';
+            }
+        }
+        function targetTooLargeForWebGL(tw, th) {
+            const maxDim = Math.max(tw, th), total = tw * th;
+            return maxDim > 6144 || total > 24_000_000;
+        }
+        function createGLCanvas(tw, th) {
+            const canvas = document.createElement('canvas');
+            canvas.width = tw; canvas.height = th;
+            const attrs = { premultipliedAlpha: false, powerPreference: 'high-performance' };
+            let gl = canvas.getContext('webgl2', attrs); let ver = 'WebGL2';
+            if (!gl) { gl = canvas.getContext('webgl', attrs); ver = gl ? 'WebGL1' : null; }
+            return gl ? { canvas, gl, ver } : null;
+        }
+
+        function gpuBicubicUpscale(img, tw, th) {
+            if (!els.gpuEnable.checked) return null;
+            if (targetTooLargeForWebGL(tw, th)) return null;
+
+            const srcW = img.naturalWidth || img.width, srcH = img.naturalHeight || img.height;
+            const ctx = createGLCanvas(tw, th); if (!ctx) return null;
+            const { canvas: glCanvas, gl, ver } = ctx;
+
+            try { els.gpuInfo.textContent = `GPU: ${ver} · ${getGpuReadableName(gl)}`; } catch { }
+
+            const vs2 = `#version 300 es
+in vec2 p;
+out vec2 uv;
+void main(){
+  uv = (p + 1.0) * 0.5;
+  uv.y = 1.0 - uv.y;
+  gl_Position = vec4(p, 0.0, 1.0);
+}`;
+
+            const fs2 = `#version 300 es
+precision highp float;
+uniform sampler2D t;
+uniform vec2 srcSize;
+in vec2 uv;
+out vec4 o;
+float w(float x){x=abs(x);if(x<=1.0)return 1.0-(2.0*x*x)+(x*x*x);else if(x<2.0)return 4.0-8.0*x+5.0*x*x-x*x*x;return 0.0;}
+vec4 sampleBicubic(vec2 coord){
+  vec2 px=1.0/srcSize; vec2 st=coord*srcSize-0.5; vec2 i=floor(st); vec2 f=st-i; vec4 c=vec4(0.0);
+  for(int m=-1;m<=2;m++){
+    float km=w(float(m)-f.y);
+    for(int n=-1;n<=2;n++){
+      float kn=w(f.x-float(n));
+      c+=texture(t,(i+vec2(n,m)+0.5)*px)*(km*kn);
+    }
+  }
+  return c;
+}
+void main(){o=sampleBicubic(uv);} `;
+
+            const vs1 = `
+attribute vec2 p;
+varying vec2 uv;
+void main(){
+  uv = (p + 1.0) * 0.5;
+  uv.y = 1.0 - uv.y;
+  gl_Position = vec4(p, 0.0, 1.0);
+}`;
+
+            const fs1 = `precision mediump float;
+varying vec2 uv;
+uniform sampler2D t;
+void main(){ gl_FragColor = texture2D(t, uv); }`;
+
+            function sh(type, src) {
+                const s = gl.createShader(type);
+                gl.shaderSource(s, src);
+                gl.compileShader(s);
+                if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+                    throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed');
+                return s;
+            }
+
+            try {
+                const prog = gl.createProgram();
+                if (ver === 'WebGL2') {
+                    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs2));
+                    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs2));
+                } else {
+                    gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs1));
+                    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs1));
+                }
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+                    throw new Error(gl.getProgramInfoLog(prog) || 'link failed');
+                gl.useProgram(prog);
+
+                const buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+                const loc = gl.getAttribLocation(prog, 'p');
+                gl.enableVertexAttribArray(loc);
+                gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+                gl.activeTexture(gl.TEXTURE0);
+                const tex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+
+                gl.uniform1i(gl.getUniformLocation(prog, 't'), 0);
+                if (ver === 'WebGL2') gl.uniform2f(gl.getUniformLocation(prog, 'srcSize'), srcW, srcH);
+
+                gl.viewport(0, 0, tw, th);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                if (gl.getError()) return null;
+                return glCanvas;
+            } catch {
+                return null;
+            }
+        }
+
+        /* ---------- CPU upscale fallback ---------- */
+        function createCanvas(w, h) {
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            return c;
+        }
+        function safe2d(c) {
+            const ctx = c.getContext('2d');
+            if (!ctx) throw new Error('2D context unavailable');
+            return ctx;
+        }
+        function drawImageHQ(ctx, img, dx, dy, dw, dh) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, dx, dy, dw, dh);
+        }
+        function multiStepResize(img, tw, th) {
+            let cw = img.naturalWidth || img.width, ch = img.naturalHeight || img.height, src = img;
+            while (cw * 1.5 < tw || ch * 1.5 < th) {
+                const nw = Math.min(Math.round(cw * 1.5), tw), nh = Math.min(Math.round(ch * 1.5), th);
+                const tmp = createCanvas(nw, nh);
+                const tctx = safe2d(tmp);
+                drawImageHQ(tctx, src, 0, 0, nw, nh);
+                src = tmp; cw = nw; ch = nh;
+            }
+            if (cw !== tw || ch !== th) {
+                const f = createCanvas(tw, th);
+                const fctx = safe2d(f);
+                drawImageHQ(fctx, src, 0, 0, tw, th);
+                src = f;
+            }
+            return src;
+        }
+        function to2DCanvas(src) {
+            try { const ctx = src.getContext && src.getContext('2d'); if (ctx) return src; } catch { }
+            const c = document.createElement('canvas');
+            c.width = src.width; c.height = src.height;
+            const ctx2 = c.getContext('2d');
+            ctx2.drawImage(src, 0, 0);
+            return c;
+        }
+        async function upscaleAuto(img, tw, th) {
+            try { const glc = gpuBicubicUpscale(img, tw, th); if (glc) return to2DCanvas(glc); } catch { }
+            return multiStepResize(img, tw, th);
+        }
+
+        /* ---------- Post FX ---------- */
+        function applyMedianBlend(canvas, strength) {
+            if (strength <= 0) return canvas; const w = canvas.width, h = canvas.height; const ctx = safe2d(canvas);
+            const src = ctx.getImageData(0, 0, w, h), dst = ctx.createImageData(w, h), s = src.data, d = dst.data;
+            const idx = (x, y) => (y * w + x) * 4; const kx = [-1, 0, 1, -1, 0, 1, -1, 0, 1], ky = [-1, -1, -1, 0, 0, 0, 1, 1, 1];
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const rA = [], gA = [], bA = []; for (let k = 0; k < 9; k++) { const i = idx(x + kx[k], y + ky[k]); rA.push(s[i]); gA.push(s[i + 1]); bA.push(s[i + 2]); }
+                    rA.sort((a, b) => a - b); gA.sort((a, b) => a - b); bA.sort((a, b) => a - b);
+                    const i = idx(x, y), mr = rA[4], mg = gA[4], mb = bA[4];
+                    d[i] = Math.round(s[i] * (1 - strength) + mr * strength); d[i + 1] = Math.round(s[i + 1] * (1 - strength) + mg * strength); d[i + 2] = Math.round(s[i + 2] * (1 - strength) + mb * strength); d[i + 3] = s[i + 3];
+                }
+            }
+            ctx.putImageData(dst, 0, 0); return canvas;
+        }
+
+        function applySharpen(canvas, amount) {
+            if (amount <= 0) return canvas;
+            const w = canvas.width, h = canvas.height; const ctx = safe2d(canvas);
+            const src = ctx.getImageData(0, 0, w, h), dst = ctx.createImageData(w, h);
+            const s = src.data, d = dst.data; const a = amount;
+            const k = [0, -1 * a, 0, -1 * a, 1 + 4 * a, -1 * a, 0, -1 * a, 0];
+            const pix = (x, y, c) => s[(y * w + x) * 4 + c] | 0;
+
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    for (let c = 0; c < 3; c++) {
+                        const val =
+                            pix(x - 1, y - 1, c) * k[0] + pix(x, y - 1, c) * k[1] + pix(x + 1, y - 1, c) * k[2] +
+                            pix(x - 1, y, c) * k[3] + pix(x, y, c) * k[4] + pix(x + 1, y, c) * k[5] +
+                            pix(x - 1, y + 1, c) * k[6] + pix(x, y + 1, c) * k[7] + pix(x + 1, y + 1, c) * k[8];
+                        d[(y * w + x) * 4 + c] = Math.max(0, Math.min(255, val));
+                    }
+                    // FIX: alpha write inside x-loop (avoids "x is not defined")
+                    d[(y * w + x) * 4 + 3] = s[(y * w + x) * 4 + 3];
+                }
+            }
+            ctx.putImageData(dst, 0, 0); return canvas;
+        }
+
+        function applyContrast(canvas, boost) {
+            if (boost <= 0) return canvas;
+            const ctx = safe2d(canvas); const { width: w, height: h } = canvas;
+            const img = ctx.getImageData(0, 0, w, h); const d = img.data; const f = (1 + boost), m = 128;
+            for (let i = 0; i < d.length; i += 4) {
+                d[i] = Math.max(0, Math.min(255, (d[i] - m) * f + m));
+                d[i + 1] = Math.max(0, Math.min(255, (d[i + 1] - m) * f + m));
+                d[i + 2] = Math.max(0, Math.min(255, (d[i + 2] - m) * f + m));
+            }
+            ctx.putImageData(img, 0, 0); return canvas;
+        }
+
+        /* ---------- Orientation guard ---------- */
+        function adjustOrientationToMatch(imgW, imgH, targetW, targetH, tol = 0.06) {
+            const rGot = imgW / imgH, rWant = targetW / targetH;
+            const nearly = (a, b) => Math.abs(a - b) / Math.max(a, b) <= tol;
+            if (nearly(rGot, rWant)) return { w: targetW, h: targetH };
+            if (nearly(rGot, targetH / targetW)) return { w: targetH, h: targetW };
+            return { w: targetW, h: targetH };
+        }
+
+        /* ---------- Fetch + upscale + encode ---------- */
+        // Make a canvas from a fetched Blob, honoring EXIF orientation
+        async function canvasFromBlobRespectOrientation(blob) {
+            // Preferred path: createImageBitmap respects EXIF when asked
+            if ('createImageBitmap' in window) {
+                try {
+                    const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+                    const c = document.createElement('canvas');
+                    c.width = bmp.width; c.height = bmp.height;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(bmp, 0, 0);
+                    bmp.close?.();
+                    return c;
+                } catch { }
+            }
+            // Fallback: use <img> (may ignore EXIF in canvas)
+            const url = URL.createObjectURL(blob);
+            try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.src = url;
+                await img.decode();
+                const c = document.createElement('canvas');
+                c.width = img.naturalWidth || img.width;
+                c.height = img.naturalHeight || img.height;
+                const ctx = c.getContext('2d');
+                // Try to detect the classic upside-down case and rotate 180° as a heuristic
+                // (only used if createImageBitmap is unavailable)
+                ctx.save();
+                // Heuristic toggle can be extended; keeping identity by default
+                ctx.drawImage(img, 0, 0);
+                ctx.restore();
+                return c;
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        async function toFormatted(imgUrl, { format, targetW, targetH, alt, signal }, tries = 3) {
+            const backoffBase = 600;
+            for (let attempt = 1; attempt <= tries; attempt++) {
+                const bust = (imgUrl.includes('?') ? '&' : '?') + 'ts=' + Date.now();
+                const urlWithBust = imgUrl + bust;
+                try {
+                    const resp = await fetchWithTimeout(urlWithBust, { cache: 'no-store', signal }, 15000);
+                    if (!resp.ok) {
+                        if (attempt < tries && (resp.status === 429 || (resp.status >= 500 && resp.status < 600))) {
+                            await sleep(backoffBase + Math.random() * 400);
+                            continue;
+                        }
+                        throw new Error(`HTTP ${resp.status}`);
+                    }
+                    const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+                    if (!ctype.startsWith('image/')) {
+                        if (attempt < tries) { await sleep(backoffBase + Math.random() * 400); continue; }
+                        throw new Error(`Non-image (${ctype})`);
+                    }
+
+                    const blob = await resp.blob();
+
+                    // ✅ Normalize orientation here
+                    const baseCanvas = await canvasFromBlobRespectOrientation(blob);
+
+                    // Dimensions after EXIF fix
+                    const srcW = baseCanvas.width, srcH = baseCanvas.height;
+
+                    // If the target aspect mismatches by ~180° flip, swap (extra guard)
+                    const rGot = srcW / srcH, rWant = targetW / targetH;
+                    const nearly = (a, b, tol = 0.06) => Math.abs(a - b) / Math.max(a, b) <= tol;
+                    const [tw, th] = nearly(rGot, rWant) ? [targetW, targetH]
+                        : nearly(rGot, targetH / targetW) ? [targetH, targetW]
+                            : [targetW, targetH];
+
+                    // Quality screen (optional)
+                    if (els.skipAbnormal && els.skipAbnormal.checked) {
+                        const probeImg = new Image();
+                        probeImg.src = baseCanvas.toDataURL('image/png');
+                        await probeImg.decode();
+                        const ok = await analyzeImageQuality(probeImg, tw, th);
+                        if (!ok) throw new Error('SKIP_BAD_IMAGE');
+                    }
+
+                    // Upscale from orientation-corrected canvas
+                    let outCanvas = await upscaleAuto(baseCanvas, tw, th);
+                    outCanvas = applyMedianBlend(outCanvas, 0.12);
+                    outCanvas = applySharpen(outCanvas, 0.45);
+                    outCanvas = applyContrast(outCanvas, 0.06);
+
+                    const useJpeg = (format === 'jpeg');
+                    const mime = useJpeg ? 'image/jpeg' : 'image/png';
+                    const dataUrl = outCanvas.toDataURL(mime, useJpeg ? 1.0 : undefined);
+
+                    const out = new Image();
+                    out.src = dataUrl; out.alt = alt || '';
+                    await out.decode();
+                    out.dataset.format = useJpeg ? 'jpeg' : 'png';
+                    out.dataset.w = String(outCanvas.width);
+                    out.dataset.h = String(outCanvas.height);
+                    out.dataset.downloadHref = dataUrl;
+                    return out;
+
+                } catch (e) {
+                    if (signal && signal.aborted) throw e;
+                    const msg = String(e && e.message || e);
+                    if (attempt < tries && (msg.includes('timeout') || msg.includes('Failed to fetch') || msg.includes('SKIP_BAD_IMAGE'))) {
+                        await sleep(backoffBase + Math.random() * 400);
+                        continue;
+                    }
+                    if (attempt >= tries) throw e;
+                }
+            }
+            throw new Error('Unexpected: toFormatted exhausted retries.');
+        }
+
+
+        /* ---------- Render cards ---------- */
+        function addToGallery(img, prompt, model, idx) {
+            const card = document.createElement('div');
+            card.className = 'imgcard';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'imgwrap';
+
+            const ratio = els.aspect.value.split('/').map(Number);
+            if (ratio.length === 2) wrap.style.aspectRatio = `${ratio[0]} / ${ratio[1]}`;
+
+            img.alt = prompt;
+            img.loading = 'lazy';
+            wrap.appendChild(img);
+
+            const tools = document.createElement('div');
+            tools.className = 'imgtools';
+
+            const meta = document.createElement('div');
+            meta.className = 'small';
+            const w = img.dataset.w || '—', h = img.dataset.h || '—';
+            meta.textContent = `${model} · ${prompt.slice(0, 64)}${prompt.length > 64 ? '…' : ''} · ${w}×${h}`;
+
+            const upBtn = document.createElement('button');
+            upBtn.className = 'btn-ghost thumb';
+            upBtn.textContent = '👍';
+            upBtn.title = 'Looks good';
+            upBtn.setAttribute('aria-label', 'Mark this image good');
+            upBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                recordVote(prompt, model, Number(img.dataset.seed || 0), true);
+                makeRipple(e, upBtn);
+                makeBurst(upBtn, '💫');
+                makeToast(upBtn, 'Saved');
+            }, { passive: false });
+
+            const downBtn = document.createElement('button');
+            downBtn.className = 'btn-ghost thumb';
+            downBtn.textContent = '👎';
+            downBtn.title = 'Looks bad';
+            downBtn.setAttribute('aria-label', 'Mark this image bad');
+            downBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                recordVote(prompt, model, Number(img.dataset.seed || 0), false);
+                makeRipple(e, downBtn);
+                makeBurst(downBtn, '💥');
+                makeToast(downBtn, 'Saved', true);
+            }, { passive: false });
+
+            const dl = document.createElement('a');
+            dl.className = 'btn-ghost';
+            dl.textContent = 'Download';
+            const ext = img.dataset.format || (els.format.value === 'jpeg' ? 'jpeg' : 'png');
+            dl.download = filenameFromPrompt(prompt, idx, ext);
+            dl.href = img.dataset.downloadHref || img.src;
+
+            // Append controls (no Paste Prompt button here anymore)
+            tools.appendChild(meta);
+            tools.appendChild(upBtn);
+            tools.appendChild(downBtn);
+            tools.appendChild(dl);
+            card.appendChild(wrap);
+            card.appendChild(tools);
+            els.gallery.prepend(card);
+        }
+
+
+        /* ---------- Main flow ---------- */
+        async function generateBatch() {
+            if (running) return;
+            const prompts = parsePrompts(els.prompt.value);
+            if (!prompts.length) { els.prompt.focus(); return; }
+
+            running = true; cancel = false;
+            els.gen.disabled = true; els.stop.disabled = false;
+            setBusy(true, 'Generating…');
+
+            const n = parseInt(els.count.value, 10) || 1;
+            const outFormat = els.format.value;
+            const seedBase = els.seed.value.trim() ? Number(els.seed.value.trim()) : null;
+            const nologo = !!(els.nologo && els.nologo.checked);
+
+            const { aw, ah } = parseAspect(els.aspect.value);
+            let targetW = parseInt(els.width.value, 10);
+            if (!Number.isFinite(targetW) || targetW < 64) targetW = 64;
+            if (targetW > 16384) targetW = 16384;
+
+            const targetH = els.lockAspect.checked
+                ? Math.max(1, Math.round(targetW * (ah / aw)))
+                : Math.max(1, parseInt(els.heightComputed.value || '0', 10) || Math.round(targetW * (ah / aw)));
+            els.heightComputed.value = String(targetH);
+
+            let k = 0; let skippedCount = 0;
+            setProgress(0, n * prompts.length);
+            if (els.skipCounter) els.skipCounter.textContent = 'Skipped: 0';
+            _seenHashes.clear();
+            currentAbort = new AbortController();
+
+            try {
+                for (const p of prompts) {
+                    for (let i = 1; i <= n; i++) {
+                        if (cancel) { setBusy(false, 'Canceled'); throw new Error('canceled'); }
+                        setProgress(k, n * prompts.length);
+                        await nextFrame();
+
+                        try {
+                            const chosenModel = chooseModel(p);
+                            const extraBad = Math.max(0, parseInt((els.smartRetries && els.smartRetries.value) || '0', 10));
+                            const extraDup = Math.max(0, parseInt((els.uniqueRetries && els.uniqueRetries.value) || '0', 10));
+                            const wantUnique = !!(els.avoidDup && els.avoidDup.checked);
+
+                            let finalImg = null, attempts = 0;
+                            while (attempts <= (extraBad + extraDup)) {
+                                if (cancel) { setBusy(false, 'Canceled'); throw new Error('canceled'); }
+
+                                const base = seedBase !== null ? (seedBase + i - 1) : Math.floor(Math.random() * 1e9);
+                                const thisSeed = (els.adaptive && els.adaptive.checked) ? pickSeed(p, base) : base;
+                                const jitter = attempts === 0 ? 0 : (attempts * 9973 + Math.floor(Math.random() * 1000));
+                                const trySeed = thisSeed + jitter;
+
+                                const urlTry = buildPollinationsUrl(p, {
+                                    model: chosenModel, width: targetW, height: targetH, seed: trySeed, nologo,
+                                    quality: `m${chosenModel}-a${attempts}`
+                                });
+
+                                const img = await toFormatted(urlTry, {
+                                    format: outFormat, targetW, targetH, alt: p, signal: currentAbort.signal
+                                }, 3);
+
+                                if (wantUnique) {
+                                    let isDup = false;
+                                    try {
+                                        const h = _aHash(img, 8); img.dataset.phash = h;
+                                        for (const old of _seenHashes) { if (_hamming(h, old) <= 6) { isDup = true; break; } }
+                                        if (!isDup) _seenHashes.add(h);
+                                    } catch { }
+                                    if (isDup && attempts < (extraBad + extraDup)) { attempts++; continue; }
+                                }
+
+                                img.dataset.seed = String(trySeed);
+                                finalImg = img; break;
+                            }
+
+                            if (!finalImg) throw new Error('Failed to get a good, unique image.');
+                            addToGallery(finalImg, p, (els.gpuEnable.checked ? 'GPU' : 'CPU') + ' • ' + chosenModel + ' • auto', i);
+
+                        } catch (err) {
+                            const m = String(err && err.message || err || '');
+                            if (m.includes('SKIP_BAD_IMAGE')) {
+                                skippedCount++; if (els.skipCounter) els.skipCounter.textContent = `Skipped: ${skippedCount}`;
+                            }
+                            els.statusText.textContent = `Skipped (${m})`;
+                        }
+
+                        k++;
+                        setProgress(k, n * prompts.length);
+                        await idle(30);
+                    }
+                }
+                setProgress(n * prompts.length, n * prompts.length);
+                setBusy(false, 'Done');
+            } finally {
+                running = false;
+                els.gen.disabled = false;
+                els.stop.disabled = true;
+                currentAbort = null;
+            }
+        }
+
+        /* ---------- Download all ---------- */
+        async function downloadAllZip() {
+            const imgs = Array.from(document.querySelectorAll('.imgwrap img'));
+            if (!imgs.length) { return; }
+            const zip = new JSZip(); let i = 1;
+            for (const img of imgs) {
+                const src = img.dataset.downloadHref || img.src;
+                const resp = await fetch(src); const blob = await resp.blob(); const arrBuf = await blob.arrayBuffer();
+                const ext = (img.dataset.format || 'png').replace('jpg', 'jpeg');
+                const name = filenameFromPrompt(img.alt || 'image', i++, ext);
+                zip.file(name, arrBuf);
+            }
+            const content = await zip.generateAsync({ type: 'blob' }); saveAs(content, 'images.zip');
+        }
+
+        /* ---------- Wire events ---------- */
+        els.gen.addEventListener('click', (e) => { e.preventDefault(); generateBatch(); });
+        els.stop.addEventListener('click', () => {
+            cancel = true;
+            if (currentAbort) { try { currentAbort.abort(); } catch { } }
+            setBusy(false, 'Canceled');
+        });
+        els.clear.addEventListener('click', () => { els.gallery.innerHTML = ''; setProgress(0, 0); updatePromptCount(); });
+        els.downloadAll.addEventListener('click', downloadAllZip);
+        els.surprise.addEventListener('click', () => { els.prompt.value = samples[Math.floor(Math.random() * samples.length)]; updatePromptCount(); });
+        els.pastePrompt = document.getElementById('pastePrompt');
+        els.pastePrompt.addEventListener('click', async () => {
+            try {
+                if (!navigator.clipboard || !navigator.clipboard.readText) {
+                    alert('Clipboard API not available. Use Ctrl+V in the box.');
+                    els.prompt.focus();
+                    return;
+                }
+                const text = await navigator.clipboard.readText();
+                if (text && text.trim()) {
+                    els.prompt.value = text.trim();
+                    updatePromptCount();
+                } else {
+                    alert('Clipboard is empty!');
+                }
+            } catch (e) {
+                alert('Failed to read clipboard (needs HTTPS or permission).');
+                els.prompt.focus();
+            }
+        });
+
+
+        // Defaults
+        els.prompt.value = samples[0];
+        updatePromptCount();
+        updateDerivedHeight();
+
+        // GPU badge init
+        document.addEventListener('DOMContentLoaded', () => {
+            const el = els.gpuInfo; if (!el) return;
+            let label = 'GPU: unavailable';
+            try {
+                const test = createGLCanvas(2, 2);
+                if (test && test.gl) {
+                    const name = getGpuReadableName(test.gl) || '';
+                    window.__gpuEnabled = true; window.__gpuName = name || 'WebGL';
+                    label = `GPU: ${test.ver}${name ? ' · ' + name : ''}`;
+                }
+            } catch { }
+            el.textContent = label;
+        });
+
+        // Soft global error surfacing
+        window.addEventListener('error', ev => {
+            const msg = (ev?.error?.message) || ev?.message || 'Unknown error';
+            console.error('Global error:', ev?.error || ev);
+            els.statusText.textContent = `Error: ${msg}`;
+            setBusy(true, 'Error');
+        });
+        window.addEventListener('unhandledrejection', ev => {
+            const msg = (ev?.reason?.message) || ev?.reason || 'Unknown promise rejection';
+            console.error('Unhandled rejection:', ev?.reason);
+            els.statusText.textContent = `Async error: ${msg}`;
+            setBusy(true, 'Error');
+        });
+    </script>
+    <script type="module" src="./supabase.js"></script>
+    <!-- Main app logic (automatically imports supabase.js) -->
+    <script type="module" src="script.js"></script>
+</body>
+
+</html>
